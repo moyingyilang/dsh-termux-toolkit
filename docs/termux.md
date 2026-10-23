@@ -48,6 +48,10 @@ node --expose-internals apps/cli/lib/bin.js web --port 3081 --no-open
 | Web UI starts then exits on the first session write | the flock binding is missing or stale | rerun `build`, or `start` with the compiler available |
 | `Cannot find module 'node-addon-require-builtin'` at boot | launched without `--expose-internals` and without the native binding | launch through `dsh-termux start` |
 
+## Replacing a device-local script
+
+A checkout patched by this toolkit no longer matches the lib-level scripts an earlier Termux setup may have used (for example a `start-web.sh` that rewrites `lib/` after each build): those scripts search for the unpatched publication block and stop when it is gone. After the first `dsh-termux build`, start the UI with `dsh-termux start` and retire the lib-level scripts.
+
 ## Removing the toolkit
 
 The patches are the only change to the checkout. Restore the four files (`git checkout --` them, as listed in the README) and delete the generated `native/system/node_modules/@deepseek-ai/node-addon-system-android-<arch>` directory.
