@@ -30,6 +30,8 @@ function builtinLoader(require: NodeJS.Require): { requireBuiltin(moduleId: stri
   try {
     return require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }
   } catch (addonError) {
+    // dsh-termux: no published binding for android-arm64; Node registers the
+    // same internal modules for plain require under --expose-internals.
     return {
       requireBuiltin: (moduleId) => {
         try {
