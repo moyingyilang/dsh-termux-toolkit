@@ -111,7 +111,9 @@ cd ~/deepseek-harness && git checkout -- \
 npm test
 ```
 
-测试用上游文件摘录施加补丁，验证锚点唯一、幂等、拒绝半应用，并在存在 checkout 时断言所有锚点仍与真实上游一致。
+测试用上游文件摘录施加补丁，验证锚点唯一、幂等、拒绝半应用，并在存在 checkout 时断言所有锚点仍与真实上游一致。CI 还会在每次推送时克隆 DeepSeek Harness 并运行 `patch --check`。
+
+[docs/verification.md](docs/verification.md) 记录了设备实测：`link(2)` 被拒、编译、测试数量和强制无绑定下的启动。
 
 ## 许可证
 

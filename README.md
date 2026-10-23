@@ -111,7 +111,9 @@ cd ~/deepseek-harness && git checkout -- \
 npm test
 ```
 
-The suite patches excerpted upstream files, proves anchors are unique and idempotent, refuses half-applied checkouts, and (when a checkout is present) asserts every anchor still matches real upstream.
+The suite patches excerpted upstream files, proves anchors are unique and idempotent, refuses half-applied checkouts, and (when a checkout is present) asserts every anchor still matches real upstream. CI additionally clones DeepSeek Harness and runs `patch --check` against it on every push.
+
+[docs/verification.md](docs/verification.md) records the device run: the `link(2)` denial, the compile, the test counts, and the boot with the binding forced unavailable.
 
 ## License
 
