@@ -1,0 +1,36 @@
+{
+  "name": "dsh-termux-toolkit",
+  "version": "0.1.0",
+  "description": "Build and run DeepSeek Harness natively on Android/Termux: reproducible source patches, a locally compiled flock addon, and a launcher that passes the flags the Android build needs.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "termux",
+    "android"
+  ],
+  "bin": {
+    "dsh-termux": "bin/dsh-termux.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "docs/",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "doctor": "node bin/dsh-termux.mjs doctor"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moyingyilang/dsh-termux-toolkit.git"
+  },
+  "private": false
+}

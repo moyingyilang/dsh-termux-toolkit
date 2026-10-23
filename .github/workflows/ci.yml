@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+      - run: node bin/dsh-termux.mjs --help
+
+  upstream-anchors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Clone DeepSeek Harness
+        run: git clone --depth 1 https://github.com/deepseek-ai/deepseek-harness "$RUNNER_TEMP/upstream"
+      - name: Inspect anchors against upstream
+        run: node bin/dsh-termux.mjs patch --check --repo "$RUNNER_TEMP/upstream"
+      - name: Apply patches and show the diff
+        run: |
+          node bin/dsh-termux.mjs patch --repo "$RUNNER_TEMP/upstream"
+          git -C "$RUNNER_TEMP/upstream" diff --stat
