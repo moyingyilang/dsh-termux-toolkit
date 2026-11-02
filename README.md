@@ -42,7 +42,15 @@ node ~/dsh-termux-toolkit/bin/dsh-termux.mjs start
 
 `build` patches, installs, builds, and compiles both native pieces (the flock binding and sharp). `start` prints the token URL for `http://127.0.0.1:3081/`; the GUI rejects requests without that token. The instance keeps its sessions, storage, and settings in `~/.dsh-src` so it never shares state with an npm-installed `dsh`.
 
-Put the command on `PATH` once instead of typing the path:
+Install the shortcut into the shell rc file, then start from any new shell:
+
+```sh
+dsh-termux shell          # writes the dsh4termux block
+dsh4termux setup          # doctor, build when needed, then start
+dsh4termux                # start the Web UI
+```
+
+Or put the command on `PATH` instead of typing the path:
 
 ```sh
 npm link ~/dsh-termux-toolkit
@@ -55,7 +63,10 @@ npm link ~/dsh-termux-toolkit
 | `doctor` | prints platform, checkout version, patch state, binding state, and the resolved pnpm |
 | `patch` | applies the five source patches; idempotent; `--check` only reports and exits 1 when upstream moved an anchor |
 | `build` | patch, `pnpm install --frozen-lockfile --ignore-scripts`, `pnpm run build` with a 4 GiB heap, then compile the flock binding |
+| `setup` | `doctor`, then `build` when the checkout is not ready, then `start` |
 | `start` | ensures the binding, then runs `node --expose-internals apps/cli/lib/bin.js web --port <port> --no-open` |
+| `shell` | installs the `dsh4termux` shortcut into the shell rc file (`--print`, `--remove`, `--rc`) |
+| `release` | assembles `dist/<platform>-<arch>-<version>/` with a manifest and checksums |
 
 Options: `--repo <dir>` (default: nearest parent checkout, else `~/deepseek-harness`), `--port <n>`, `--restart`, `--dsh-home <dir>`, `--skip-install`, `--scripts`, `--memory-mb <n>`, `--headers <dir>`, `--cc <name>`, `--force`, `--strict`.
 
@@ -79,6 +90,20 @@ Each patched block carries a `dsh-termux` comment, so `grep -rn dsh-termux` list
 - **Session publication** stays atomic and durable. `link(2)` fails with `EEXIST` when the final path exists, so two processes cannot clobber one another. `rename(2)` overwrites silently, so the Android fallback narrows that guarantee to the preceding `rejectExistingLog()` check: a concurrent writer of the same session id can now win the race. The window is a single session id created simultaneously by two processes.
 - **Create-if-absent** keeps its no-replace guarantee through `O_EXCL`; the difference is visibility, because the destination is readable while its bytes are copied, where the hard link made the complete file appear at once.
 - **`--expose-internals`** is process-wide. The toolkit always passes it; launching the checkout with a bare `node apps/cli/lib/bin.js` on a host without the native binding exits with a message naming the flag.
+
+## Local release build
+
+`dsh-termux release` assembles `dist/<platform>-<arch>-<version>/` on the building host, the same
+way the JMNeXt desktop packages are put together: swap the architecture-specific pieces you have,
+verify structure, and state what was not run.
+
+| Included | Verified | Not verified |
+| --- | --- | --- |
+| toolkit sources, docs, license | SHA-256 of every file in `checksums.txt` | — |
+| the host-built flock binding, when present | ELF class and machine match `process.arch` | the binding is not executed on another architecture |
+
+`manifest.json` records the platform, architecture, Node version, binding ELF facts, and the same
+file digests. A binding from a different architecture aborts the build instead of shipping.
 
 ## Known upstream test divergences
 
@@ -120,7 +145,7 @@ cd ~/deepseek-harness && git checkout -- \
 npm test
 ```
 
-The suite patches excerpted upstream files, proves anchors are unique and idempotent, refuses half-applied checkouts, and (when a checkout is present) asserts every anchor still matches real upstream. CI additionally clones DeepSeek Harness and runs `patch --check` against it on every push.
+The suite patches excerpted upstream files, proves anchors are unique and idempotent, refuses half-applied checkouts, and (when a checkout is present) asserts every anchor still matches real upstream. There is no CI: the release check runs locally, against the checkout you build.
 
 [docs/verification.md](docs/verification.md) records the device run: the `link(2)` denial, the compile, the test counts, and the boot with the binding forced unavailable.
 

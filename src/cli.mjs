@@ -8,6 +8,8 @@ import { doctor } from './doctor.mjs'
 import { describeProblems, inspectPatches } from './patch-engine.mjs'
 import { patches } from './patches/index.mjs'
 import { locateRepo } from './repo.mjs'
+import { releaseBundle } from './release.mjs'
+import { blockInstalled, installShell, renderBlock, resolveShell, SHORTCUT } from './shell.mjs'
 import { DEFAULT_PORT, startWeb } from './start.mjs'
 
 const USAGE = `dsh-termux — build and run DeepSeek Harness natively on Android/Termux
@@ -16,14 +18,20 @@ Usage:
   dsh-termux doctor  [--repo <dir>] [--strict]
   dsh-termux patch   [--repo <dir>] [--check]
   dsh-termux build   [--repo <dir>] [--skip-install] [--scripts] [--memory-mb <n>]
+  dsh-termux setup   [--repo <dir>] [--port <n>] [--restart] [--dsh-home <dir>]
   dsh-termux start   [--repo <dir>] [--port <n>] [--restart] [--dsh-home <dir>]
+  dsh-termux shell   [--rc <file>] [--print] [--remove]
+  dsh-termux release [--repo <dir>] [--out <dir>]
   dsh-termux version
 
 Commands:
   doctor   Report platform, checkout, patch, binding, and pnpm state.
   patch    Apply this device's source patches (idempotent); --check only reports.
   build    Patch, install, build, and compile the flock binding.
+  setup    doctor, build when the checkout is not ready, then start.
   start    Start the Web UI on 127.0.0.1 with --expose-internals.
+  shell    Install the dsh4termux shortcut into the shell rc file.
+  release  Assemble dist/<platform>-<arch>-<version> with checksums.
 
 Options:
   --repo <dir>      DeepSeek Harness checkout (default: nearest parent checkout)
@@ -36,6 +44,10 @@ Options:
   --dsh-home <dir>  DSH_HOME for this instance (default: ~/.dsh-src).
   --headers <dir>   Node-API headers for the flock binding.
   --cc <name>       C compiler for the flock binding (default: cc).
+  --rc <file>       Shell rc file for the shell command (default: $SHELL rc).
+  --print           Print the shortcut block instead of writing it.
+  --remove          Remove the shortcut block.
+  --out <dir>       Release output directory (default: ./dist).
   --force           Rebuild the flock binding even when it is newer than its source.
   --strict          doctor exits 1 when the checkout cannot run.
   --help            Print this text.
@@ -45,6 +57,14 @@ Options:
  * Read the toolkit's own version.
  * @returns Version string from this package.
  */
+/**
+ * Absolute path of this CLI, as the shortcut must invoke it.
+ * @returns Absolute entry path.
+ */
+function toolkitEntry() {
+  return fileURLToPath(new URL('../bin/dsh-termux.mjs', import.meta.url))
+}
+
 function toolkitVersion() {
   const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'))
   return String(manifest.version)
@@ -70,6 +90,10 @@ export async function main(argv) {
         port: { type: 'string' },
         restart: { type: 'boolean' },
         'dsh-home': { type: 'string' },
+        rc: { type: 'string' },
+        print: { type: 'boolean' },
+        remove: { type: 'boolean' },
+        out: { type: 'string' },
         headers: { type: 'string' },
         cc: { type: 'string' },
         force: { type: 'boolean' },
@@ -127,6 +151,47 @@ export async function main(argv) {
           cc: values.cc,
           force: values.force === true,
         })
+        return 0
+      }
+      case 'setup': {
+        const root = locateRepo(values.repo)
+        if (!doctor(root).healthy) {
+          process.stdout.write('dsh-termux: checkout is not ready; building\n')
+          buildRepo(root, {
+            skipInstall: values['skip-install'] === true,
+            scripts: values.scripts === true,
+            memoryMb: values['memory-mb'] === undefined ? undefined : Number(values['memory-mb']),
+            headers: values.headers,
+            cc: values.cc,
+            force: values.force === true,
+          })
+        }
+        return await startWeb(root, {
+          port: values.port === undefined ? undefined : Number(values.port),
+          restart: values.restart === true,
+          dshHome: values['dsh-home'],
+          headers: values.headers,
+          cc: values.cc,
+        })
+      }
+      case 'shell': {
+        const { path, flavor } = resolveShell({ override: values.rc })
+        if (values.print === true) {
+          process.stdout.write(renderBlock(toolkitEntry(), flavor))
+          return 0
+        }
+        const result = installShell({ path, flavor, toolkit: toolkitEntry(), remove: values.remove === true })
+        if (!result.changed) {
+          process.stdout.write(`dsh-termux: ${values.remove === true ? 'no shortcut in' : 'unchanged'} ${path}\n`)
+          return 0
+        }
+        if (values.remove === true) process.stdout.write(`dsh-termux: removed ${SHORTCUT} from ${path}\n`)
+        else process.stdout.write(`dsh-termux: installed ${SHORTCUT} in ${path}\n`)
+        return 0
+      }
+      case 'release': {
+        const bundle = releaseBundle(locateRepo(values.repo), { out: values.out })
+        process.stdout.write(`dsh-termux: ${bundle.directory} (${String(bundle.files.length)} files)\n`)
         return 0
       }
       case 'start': {

@@ -57,6 +57,19 @@ node --expose-internals apps/cli/lib/bin.js web --port 3081 --no-open
 
 A checkout patched by this toolkit no longer matches the lib-level scripts an earlier Termux setup may have used (for example a `start-web.sh` that rewrites `lib/` after each build): those scripts search for the unpatched publication block and stop when it is gone. After the first `dsh-termux build`, start the UI with `dsh-termux start` and retire the lib-level scripts.
 
+## Shortcut and release
+
+```sh
+dsh-termux shell               # installs the dsh4termux block in $SHELL's rc file
+dsh-termux shell --print       # show the block without writing
+dsh-termux shell --remove      # take it out again
+dsh4termux setup               # doctor, build when needed, then start
+dsh-termux release --out dist  # local release directory with manifest and checksums
+```
+
+The block runs the CLI from this repository's absolute path, so reinstall it after moving the
+checkout. [release.md](release.md) describes what the release verifies and what it does not.
+
 ## Removing the toolkit
 
 The patches are the only change to the checkout. Restore the four files (`git checkout --` them, as listed in the README) and delete the generated `native/system/node_modules/@deepseek-ai/node-addon-system-android-<arch>` directory.

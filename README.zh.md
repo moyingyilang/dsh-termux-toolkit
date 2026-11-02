@@ -42,7 +42,15 @@ node ~/dsh-termux-toolkit/bin/dsh-termux.mjs start
 
 `build` 依次打补丁、安装依赖、构建，并编译两个原生部分（flock 绑定和 sharp）。`start` 会打印 `http://127.0.0.1:3081/` 的 token URL，GUI 拒绝没有 token 的请求。实例把会话、存储和设置放在 `~/.dsh-src`，不会与 npm 安装的 `dsh` 共享状态。
 
-把命令放进 `PATH`，免得每次写全路径：
+把快捷命令写进 shell rc 文件，之后开新 shell 直接用：
+
+```sh
+dsh-termux shell          # 写入 dsh4termux 区块
+dsh4termux setup          # doctor、必要时 build，然后启动
+dsh4termux                # 启动 Web UI
+```
+
+或者把命令放进 `PATH`，免得每次写全路径：
 
 ```sh
 npm link ~/dsh-termux-toolkit
@@ -55,7 +63,10 @@ npm link ~/dsh-termux-toolkit
 | `doctor` | 打印平台、checkout 版本、补丁状态、绑定状态和解析到的 pnpm |
 | `patch` | 应用五个源码补丁；幂等；`--check` 只报告，上游锚点变化时退出码为 1 |
 | `build` | 打补丁、`pnpm install --frozen-lockfile --ignore-scripts`、以 4 GiB 堆运行 `pnpm run build`，再编译 flock 绑定 |
+| `setup` | 先 `doctor`，checkout 未就绪时 `build`，然后 `start` |
 | `start` | 确认绑定存在后运行 `node --expose-internals apps/cli/lib/bin.js web --port <port> --no-open` |
+| `shell` | 把 `dsh4termux` 快捷命令写进 shell rc 文件（`--print`、`--remove`、`--rc`） |
+| `release` | 生成 `dist/<platform>-<arch>-<version>/`，含清单与校验和 |
 
 选项：`--repo <dir>`（默认取最近的父级 checkout，否则 `~/deepseek-harness`）、`--port <n>`、`--restart`、`--dsh-home <dir>`、`--skip-install`、`--scripts`、`--memory-mb <n>`、`--headers <dir>`、`--cc <name>`、`--force`、`--strict`。
 
@@ -79,6 +90,17 @@ npm link ~/dsh-termux-toolkit
 - **会话发布**仍然原子且持久。目标路径存在时 `link(2)` 会以 `EEXIST` 失败，所以两个进程不会互相覆盖；`rename(2)` 会静默覆盖，因此 Android 回退把这一保证缩小到前面的 `rejectExistingLog()` 检查：同一会话 id 的并发写入者现在可能赢得竞争。窗口仅限两个进程同时创建同一会话 id。
 - **create-if-absent** 通过 `O_EXCL` 保留了不可覆盖保证；差别在可见性——目标文件在字节复制期间可读，而硬链接会让完整文件一次出现。
 - **`--expose-internals`** 是进程级参数。工具始终传入；在没有原生绑定的宿主上直接用裸 `node apps/cli/lib/bin.js` 启动，会以提示该参数的错误退出。
+
+## 本地发布构建
+
+`dsh-termux release` 在构建机上生成 `dist/<platform>-<arch>-<version>/`，做法与 JMNeXt 桌面端打包一致：替换你手上有的架构相关产物、做结构验证、并写明没有验证的部分。
+
+| 包含 | 已验证 | 未验证 |
+| --- | --- | --- |
+| 工具源码、文档、许可证 | `checksums.txt` 中每个文件的 SHA-256 | — |
+| 本机构建的 flock 绑定（存在时） | ELF class 与 machine 和 `process.arch` 一致 | 未在其他架构上实际运行该绑定 |
+
+`manifest.json` 记录平台、架构、Node 版本、绑定的 ELF 事实以及同样的文件摘要。架构不符的绑定会直接中止构建，而不是被发出去。
 
 ## 已知的上游测试差异
 
@@ -119,7 +141,7 @@ cd ~/deepseek-harness && git checkout -- \
 npm test
 ```
 
-测试用上游文件摘录施加补丁，验证锚点唯一、幂等、拒绝半应用，并在存在 checkout 时断言所有锚点仍与真实上游一致。CI 还会在每次推送时克隆 DeepSeek Harness 并运行 `patch --check`。
+测试用上游文件摘录施加补丁，验证锚点唯一、幂等、拒绝半应用，并在存在 checkout 时断言所有锚点仍与真实上游一致。本项目没有 CI：发布校验在本地对你构建的 checkout 运行。
 
 [docs/verification.md](docs/verification.md) 记录了设备实测：`link(2)` 被拒、编译、测试数量和强制无绑定下的启动。
 
