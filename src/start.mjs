@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { addonPresent, compileAddon } from './android-addon.mjs'
 import { verifyPatches } from './patch-engine.mjs'
 import { patches } from './patches/index.mjs'
+import { sharpStatus } from './sharp.mjs'
 
 /** Default listen port of the source build. */
 export const DEFAULT_PORT = 3081
@@ -121,6 +122,9 @@ export async function startWeb(root, options = {}) {
     log(`dsh-termux: stopping pid ${owners.join(', ')} on port ${String(port)}`)
     if (!(await stopOwners(port))) throw new Error(`dsh-termux: port ${String(port)} is still held after 10s`)
   }
+
+  const images = sharpStatus(root)
+  if (images.state !== 'ready') log(`dsh-termux: image attachments unavailable (${images.detail})`)
 
   const dshHome = options.dshHome ?? join(homedir(), '.dsh-src')
   log(`dsh-termux: DSH_HOME=${dshHome}`)

@@ -3,6 +3,7 @@ import { addonPath, addonPresent, probeAddon } from './android-addon.mjs'
 import { inspectPatches } from './patch-engine.mjs'
 import { patches } from './patches/index.mjs'
 import { resolvePnpm } from './pnpm.mjs'
+import { sharpStatus } from './sharp.mjs'
 import { describeRepo } from './repo.mjs'
 
 /**
@@ -36,6 +37,9 @@ export function doctor(root) {
   } catch (error) {
     lines.push(`pnpm       unavailable: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
   }
+  const sharp = sharpStatus(root)
+  lines.push(`images     ${sharp.state === 'ready' ? sharp.detail : `missing: ${sharp.detail}`}`)
+  if (sharp.state !== 'ready') healthy = false
   if (process.platform !== 'android') {
     lines.push('note       not running on Android; the patches target android-arm64 only')
   }

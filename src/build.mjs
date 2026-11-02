@@ -1,6 +1,7 @@
 /** Apply the source patches, install, build, and compile the Android binding. */
 import { compileAddon } from './android-addon.mjs'
 import { applyPatches, inspectPatches, verifyPatches } from './patch-engine.mjs'
+import { buildSharp } from './sharp.mjs'
 import { patches } from './patches/index.mjs'
 import { resolvePnpm, runPnpm } from './pnpm.mjs'
 
@@ -63,6 +64,11 @@ export function buildRepo(root, options = {}) {
 
   const addon = compileAddon(root, { headers: options.headers, cc: options.cc, force: options.force })
   log(addon.compiled ? `flock binding ${addon.path}` : `flock binding ${addon.path} (up to date)`)
+
+  const sharp = buildSharp(root, { log, force: options.force })
+  if (sharp.built) log(`sharp binding ${sharp.path}`)
+  else if (sharp.path !== undefined) log(`sharp binding ${sharp.path} (up to date)`)
+  else log(`sharp: ${String(sharp.reason)}`)
 
   const missing = verifyPatches(root, patches)
   if (missing.length > 0) throw new Error(`dsh-termux: build lost a patch\n  ${missing.join('\n  ')}`)

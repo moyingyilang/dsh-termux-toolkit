@@ -2,7 +2,7 @@
 
 Build and run [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) natively on Android/Termux.
 
-Upstream DeepSeek Harness boots on Linux, macOS, and Windows. On Android its host preparation, session lock, session log publication, and new-file writes each hit a platform gap that no configuration flag closes. This toolkit applies five small source patches to a checkout, compiles the checked-in flock binding for bionic, and starts the Web UI with the one flag the patched build needs. Nothing is forked: the patches are exact-text replacements, inspectable and reversible, and `patch --check` fails loudly when upstream moves an anchor.
+Upstream DeepSeek Harness boots on Linux, macOS, and Windows. On Android its host preparation, session lock, session log publication, new-file writes, and attachment storage each hit a platform gap that no configuration flag closes, and its image pipeline has no prebuilt binary for bionic. This toolkit applies seven small source patches to a checkout, compiles the checked-in flock binding and sharp against the system libvips, and starts the Web UI with the one flag the patched build needs. Nothing is forked: the patches are exact-text replacements, inspectable and reversible, and `patch --check` fails loudly when upstream moves an anchor.
 
 Verified on a Termux device (android-arm64, Node v24.18.0, DeepSeek Harness 0.2.0-rc.2). [中文说明](README.zh.md).
 
@@ -15,12 +15,16 @@ Verified on a Termux device (android-arm64, Node v24.18.0, DeepSeek Harness 0.2.
 | Android sepolicy denies `link(2)` inside app data directories | the JSONL store publishes a new log with `link(2)`, so the first write of every session fails | publication falls back to same-filesystem `rename(2)` for `EACCES`/`EPERM` |
 | the same denial rejects the no-replace hard link used for create-if-absent writes | creating any new file through the agent fails with `EACCES` | creation falls back to `O_EXCL`, keeping the no-replace guarantee |
 | the same denial also rejects generation publication when a stored session migrates to a newer format | opening an older session fails with `EACCES` before it can be upgraded | the target is inspected, then published by `rename(2)` |
+| the attachment store fsyncs every DSH_HOME ancestor, including `/data/data` | every upload fails with `EACCES` before any bytes are stored | the durability walk stops at the highest ancestor Android lets it sync |
+| file uploads publish a digested object and its readable alias with two `link(2)` calls | the upload stages bytes, then fails as `ATTACHMENT_WRITE_FAILED` | the object is renamed into place and the alias is copied |
+| `sharp` ships no android-arm64 binary | every image attachment fails with `Could not load the "sharp" module using the android-arm64 runtime` | sharp is compiled on device against Termux libvips |
 
 ## Requirements
 
 - Termux on android-arm64 with Node.js >= 22.19 and a C compiler (`pkg install nodejs clang` or the Termux `cc` wrapper)
 - a DeepSeek Harness checkout: `git clone https://github.com/deepseek-ai/deepseek-harness ~/deepseek-harness`
 - the JavaScript pnpm build the checkout pins: `npm install -g pnpm@11.7.0`
+- image attachments only: `pkg install libvips` (headers for the sharp build)
 
 Android has no `@pnpm/exe` binary, and pnpm 10+ satisfies `packageManager: pnpm@11.7.0` by switching to that standalone executable. Installing the JavaScript build once makes the pin resolvable; the toolkit runs it through the current Node.
 
@@ -36,7 +40,7 @@ node ~/dsh-termux-toolkit/bin/dsh-termux.mjs build
 node ~/dsh-termux-toolkit/bin/dsh-termux.mjs start
 ```
 
-`build` patches, installs, builds, and compiles the binding. `start` prints the token URL for `http://127.0.0.1:3081/`; the GUI rejects requests without that token. The instance keeps its sessions, storage, and settings in `~/.dsh-src` so it never shares state with an npm-installed `dsh`.
+`build` patches, installs, builds, and compiles both native pieces (the flock binding and sharp). `start` prints the token URL for `http://127.0.0.1:3081/`; the GUI rejects requests without that token. The instance keeps its sessions, storage, and settings in `~/.dsh-src` so it never shares state with an npm-installed `dsh`.
 
 Put the command on `PATH` once instead of typing the path:
 
@@ -64,6 +68,8 @@ Options: `--repo <dir>` (default: nearest parent checkout, else `~/deepseek-harn
 | `session-link-fallback` | `packages/session/session-persistence-jsonl/src/index.ts` | `link(2)` denied with `EACCES`/`EPERM` retries publication with `rename(2)` |
 | `migration-publish-fallback` | `packages/session/session-persistence-jsonl/src/generation.ts` | a denied `link(2)` inspects the target, then publishes the verified generation with `rename(2)` |
 | `fs-create-fallback` | `packages/fs/fs-local/src/fsio.ts` | a denied no-replace hard link creates the destination with `O_EXCL` instead |
+| `attachment-durability` | `packages/attachment/attachment-local/src/store.ts` | the ancestor fsync walk stops at a directory Android refuses to open |
+| `attachment-link-fallback` | `packages/attachment/attachment-local/src/store.ts` | a denied object link renames the staged file; a denied alias link copies it |
 
 Each patched block carries a `dsh-termux` comment, so `grep -rn dsh-termux` lists every touched site. [docs/patches.md](docs/patches.md) states the failure each patch removes and the guarantee each one weakens.
 
@@ -76,11 +82,13 @@ Each patched block carries a `dsh-termux` comment, so `grep -rn dsh-termux` list
 
 ## Known upstream test divergences
 
-Five upstream tests assert hard-link behaviour that Android policy forbids, one asserts that a `link(2)` permission error is an IO failure, and one asserts the unsupported-platform rejection the flock patch removes. They fail on a Termux device with the patches applied; the product paths they cover succeed through the fallbacks:
+Nine upstream tests encode behaviour Android forbids: hard-link identity, an IO-failure classification for the policy `EACCES`, an unsupported-platform rejection, and an fsync walk above the app data directory. They fail on a Termux device with the patches applied; the product paths they cover succeed through the fallbacks:
 
 - `packages/fs/fs-local/tests/fsio.spec.ts` — "maps a non-collision guarded-create publication failure and cleans staging" (injects the `EACCES` that Android produces as policy)
 - `packages/session/session-persistence-jsonl/tests/generation.spec.ts` — "accepts an identical publication winner and rejects different bytes", "accepts an identical regular hardlink target", "retains a POSIX publication after the directory sync fails", "reports success after exclusive publication when redundant stage cleanup fails", "accepts an identical target that wins POSIX publication" (each creates a real hard link while simulating a non-Android platform)
 - `native/system/test/flock.test.js` — "import succeeds with native addons disabled" (asserts the unsupported-platform rejection the patch removes)
+- `packages/attachment/attachment-local/tests/file-store.spec.ts` — "deduplicates identical bytes and stores distinct names beside one digest" (asserts that two alias names share one inode, which a copy cannot do)
+- `packages/attachment/attachment-local/tests/store.spec.ts` — "syncs every object ancestor up to the durable boundary before returning" (expects syncs above `/data/data`, which Android refuses)
 
 `docs/patches.md` lists why each one cannot pass on Android.
 
@@ -102,7 +110,8 @@ cd ~/deepseek-harness && git checkout -- \
 
 - Android only. The patches exist to remove Android platform gaps and are not applied automatically on other hosts.
 - The desktop application and Windows-only native dependencies (`koffi`) are out of scope; install runs with `--ignore-scripts` for that reason.
-- The binding is compiled for the running Node, so a Node major upgrade needs `build` (or `start`, which recompiles a missing binding) to run the compiler again.
+- The flock binding is compiled for the running Node, so a Node major upgrade needs `build` (or `start`, which recompiles a missing binding) to run the compiler again.
+- The sharp build needs Termux `libvips`; without it, files still upload and images fail. `doctor` reports which one is missing.
 - `dsh-termux-toolkit` is unaffiliated with DeepSeek; it patches a checkout you own.
 
 ## Tests

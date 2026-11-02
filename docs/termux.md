@@ -8,6 +8,7 @@
 | a C compiler (`cc`) | the flock binding is compiled on the device; no prebuild exists for bionic |
 | `npm install -g pnpm@11.7.0` | the checkout pins that version; pnpm 10+ would otherwise switch to `@pnpm/exe`, which has no android-arm64 binary |
 | Node-API headers | `<prefix>/include/node`; the toolkit also checks `/usr/include/node` and `--headers` |
+| `libvips` + `pkg-config` | image attachments: sharp is compiled against Termux libvips (`pkg install libvips`) |
 
 The toolkit never mutates a global tool installation and never downloads a prebuilt addon.
 
@@ -18,12 +19,14 @@ dsh-termux patch
 node <js-pnpm>/bin/pnpm.cjs install --frozen-lockfile --ignore-scripts
 NODE_OPTIONS=--max-old-space-size=4096 node <js-pnpm>/bin/pnpm.cjs run build
 node <cc> ... -shared -o .../@deepseek-ai/node-addon-system-android-arm64/bin/system.node .../flock.c
+SHARP_FORCE_GLOBAL_LIBVIPS=1 npm_config_build_from_source=true node install/build.js   # in the installed sharp package
 ```
 
 - `--ignore-scripts` is not a shortcut. The dependency tree contains a Windows-only native build (`koffi`) that does not compile against bionic; the checkout's own build compiles what it needs.
 - The 4 GiB heap is required by `tsc -b tsconfig.client.json`. Termux gives Node roughly 1.1 GiB by default, and the client compile is the step that exhausts it. `--memory-mb` overrides the limit.
 - `pnpm run build` runs `build:native-system` first, which is a silent no-op on Android, then the host and client TypeScript builds, the runtime bundles, and the Web build.
-- The binding is compiled after the build so it is newer than `flock.c`; `start` recompiles whenever it is missing, and `--force` rebuilds it unconditionally.
+- The flock binding is compiled after the build so it is newer than `flock.c`; `start` recompiles whenever it is missing, and `--force` rebuilds both native pieces unconditionally.
+- sharp has no android-arm64 binary, so its own loader falls back to a source build beside the package. The toolkit compiles it against the system libvips and puts `node-gyp` on `PATH` for that step, because sharp spawns the command by name. A `pnpm install` removes the build; `build` restores it.
 
 ## What `start` runs
 
@@ -47,6 +50,8 @@ node --expose-internals apps/cli/lib/bin.js web --port 3081 --no-open
 | `the checkout is not patched` on `start` | sources were restored after the last build | run `build` |
 | Web UI starts then exits on the first session write | the flock binding is missing or stale | rerun `build`, or `start` with the compiler available |
 | `Cannot find module 'node-addon-require-builtin'` at boot | launched without `--expose-internals` and without the native binding | launch through `dsh-termux start` |
+| attaching a file fails the send and the composer returns to the previous state | the attachment durability walk hit `/data/data`, or `pnpm install` removed the patched `lib/` | run `dsh-termux build`, then restart the instance |
+| attaching an image fails with `Could not load the "sharp" module using the android-arm64 runtime` | sharp has no local build for bionic | `pkg install libvips`, run `dsh-termux build`, restart |
 
 ## Replacing a device-local script
 

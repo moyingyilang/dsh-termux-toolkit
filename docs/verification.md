@@ -39,8 +39,21 @@ The emitted bundles carry the patched code (`builtinLoader`, `createExclusive`, 
 | --- | --- | --- |
 | `packages/fs/fs-local` | 160 passed, 1 failed | the test that injects the `EACCES` Android raises as policy and expects it to surface as `FS_IO_ERROR` |
 | `packages/session/session-persistence-jsonl` | 732 passed, 5 failed, 1 skipped | the five tests that create a real hard link while asserting inode identity or a simulated non-Android platform |
+| `packages/attachment/attachment-local` | 91 passed, 2 failed, 1 skipped | one asserts inode-identical aliases, one expects fsyncs above `/data/data` |
 
 Before the `migration-publish-fallback` patch landed, the session suite reported 132 failures; all were `EACCES` on `link(2)`. The five that remain are test-harness assumptions, listed in [patches.md](patches.md#android-test-divergences).
+
+## Upload probe
+
+With the attachment patches applied, the source tree stores a file and an image into a real DSH_HOME on this device:
+
+```text
+file stored: notes.txt hello termux
+file alias: .../attachments/v1/files/ba/ba52.../notes.txt
+image stored: sha256:ab13... 64x32 bytes 156
+```
+
+sharp came from a local source build against Termux libvips 8.18.7 (`sharp-android-arm64-0.35.3.node`), which its loader prefers over the missing platform package.
 
 ## Boot
 

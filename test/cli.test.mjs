@@ -37,7 +37,7 @@ test('an unknown command is a usage error', () => {
 test('patch --check reports pending patches without writing', () => {
   const result = cli(['patch', '--check', '--repo', FIXTURES])
   assert.equal(result.status, 0, result.stderr)
-  assert.equal((result.stdout.match(/pending/g) ?? []).length, 5)
+  assert.equal((result.stdout.match(/pending/g) ?? []).length, 7)
 })
 
 test('patch --check fails on a drifted checkout', (t) => {
@@ -61,7 +61,7 @@ test('patch applies the patches and can be re-run', (t) => {
   assert.equal(second.status, 0, second.stderr)
   assert.match(second.stdout, /already applied/)
   const check = cli(['patch', '--check', '--repo', root])
-  assert.equal((check.stdout.match(/applied/g) ?? []).length, 5)
+  assert.equal((check.stdout.match(/applied/g) ?? []).length, 7)
 })
 
 test('doctor reports the checkout state', () => {

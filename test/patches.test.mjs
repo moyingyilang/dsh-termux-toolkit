@@ -98,6 +98,24 @@ test('the migration patch narrows publication to android denials', (t) => {
   assert.match(source, /await internals\.fs\.lstat\(currentPath\)/)
 })
 
+test('the attachment durability patch stops at an unreadable ancestor', (t) => {
+  const root = checkoutCopy(t)
+  applyPatches(root, patches)
+  const source = readFileSync(join(root, 'packages/attachment/attachment-local/src/store.ts'), 'utf8')
+  assert.match(source, /process\.platform === 'android' && \(code === 'EACCES' \|\| code === 'EPERM'\)\) return/)
+  assert.match(source, /await syncDirectory\(parent\)/)
+})
+
+test('the attachment publication patch renames objects and copies aliases', (t) => {
+  const root = checkoutCopy(t)
+  applyPatches(root, patches)
+  const source = readFileSync(join(root, 'packages/attachment/attachment-local/src/store.ts'), 'utf8')
+  assert.match(source, /if \(!stagingNameConsumed\) await unlink\(staged\.path\)/)
+  assert.match(source, /await rename\(staged\.path, target\)/)
+  assert.match(source, /await copyFile\(source, target, constants\.COPYFILE_EXCL\)/)
+  assert.match(source, /async function targetExists/)
+})
+
 test('the fs patch keeps the guarded-create taxonomy for other errors', (t) => {
   const root = checkoutCopy(t)
   applyPatches(root, patches)

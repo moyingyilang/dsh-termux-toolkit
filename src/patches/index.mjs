@@ -4,5 +4,15 @@ import { internalsFallback } from './internals-fallback.mjs'
 import { sessionLinkFallback } from './session-link-fallback.mjs'
 import { migrationPublishFallback } from './migration-publish-fallback.mjs'
 import { fsCreateFallback } from './fs-create-fallback.mjs'
+import { attachmentDurability } from './attachment-durability.mjs'
+import { attachmentLinkFallback } from './attachment-link-fallback.mjs'
 
-export const patches = [flockAndroid, internalsFallback, sessionLinkFallback, migrationPublishFallback, fsCreateFallback]
+export const patches = [
+  flockAndroid,
+  internalsFallback,
+  sessionLinkFallback,
+  migrationPublishFallback,
+  fsCreateFallback,
+  attachmentDurability,
+  attachmentLinkFallback,
+]

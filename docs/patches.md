@@ -1,4 +1,4 @@
-# The five patches
+# The seven patches
 
 Each patch is one exact-text replacement in a DeepSeek Harness source file. The toolkit inspects the file before writing, applies nothing unless every patch is applicable, and keeps the patched block greppable with a `dsh-termux` comment. This page states what breaks on Android without the patch and what guarantee the patch changes.
 
@@ -89,8 +89,45 @@ The patched checkout keeps upstream's tests unchanged. Seven assertions describe
 | `generation.spec.ts`: retains a POSIX publication after the directory sync fails | publishes the simulated winner with a real `link(2)` |
 | `generation.spec.ts`: reports success after exclusive publication when redundant stage cleanup fails | publishes with a real `link(2)` while simulating darwin |
 | `native/system/test/flock.test.js`: import succeeds with native addons disabled | asserts `ERR_FLOCK_UNSUPPORTED_PLATFORM` under `--no-addons`; android is now a supported platform, so the entry reaches `dlopen` and reports `ERR_DLOPEN_DISABLED` |
+| `attachment-local/file-store.spec.ts`: deduplicates identical bytes and stores distinct names beside one digest | asserts the two alias names share one inode; the Android alias is a copy |
+| `attachment-local/store.spec.ts`: syncs every object ancestor up to the durable boundary before returning | expects syncs of ancestors above `/data/data`, which Android refuses to open |
 
-Everything else passes on device: `fs-local` 160/161 and `session-persistence-jsonl` 732/738 in the run recorded for 0.1.0.
+Everything else passes on device: `fs-local` 160/164, `session-persistence-jsonl` 732/738, and `attachment-local` 91/94 in the run recorded for 0.2.0.
+
+## 6. `attachment-durability`
+
+File: `packages/attachment/attachment-local/src/store.ts`
+
+Before the first attachment is written, the store proves `DSH_HOME` durable by fsyncing every ancestor up to the filesystem root:
+
+```ts
+let level = target
+while (level !== stop) {
+  const parent = dirname(level)
+  await syncDirectory(parent)
+  if (parent === level) return
+  level = parent
+}
+```
+
+Android refuses to open `/data/data` for the app user, so `syncDirectory` throws `EACCES` and every upload fails as `ATTACHMENT_WRITE_FAILED` before a byte reaches storage. This is the failure a user sees when the attach button rejects a file.
+
+The patch ends that walk at the first ancestor Android refuses to open, and only on android. Every directory the app may sync is still synced; the entries Android owns are outside the app's control either way.
+
+Guarantee: durability is proven for every level the process can open. Above the app sandbox the proof is the platform's, not the harness's.
+
+## 7. `attachment-link-fallback`
+
+File: `packages/attachment/attachment-local/src/store.ts`
+
+A file upload publishes twice: the digested object with `link(2)` (staged write, fsync, link, `EEXIST` means deduplicate after a digest check), then the readable alias `files/<ab>/<digest>/<name>` with a second `link(2)`. Android denies both calls.
+
+The patch keeps the `EEXIST` and digest-verification paths untouched and, for a denied link on android:
+
+- the object is published by same-filesystem `rename(2)` after checking whether the target already exists, so a deduplicated object still takes the integrity-verified path;
+- the alias is published as an `O_EXCL` copy of the durable object, because the object name must survive.
+
+Guarantee: the object publish stays atomic. The alias is no longer an inode-identical second name, so two names for one digest cost two copies and `stat().ino` differs; content addressing and digest verification are unchanged.
 
 ## Drift
 
