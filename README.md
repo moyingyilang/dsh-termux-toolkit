@@ -151,4 +151,4 @@ The suite patches excerpted upstream files, proves anchors are unique and idempo
 
 ## License
 
-MIT. Patched source files remain under DeepSeek Harness's license.
+MPL-2.0. Every toolkit source file carries the Exhibit A notice: modifications to those files stay under the MPL, while the toolkit can still be combined with other code. The patched DeepSeek Harness files remain MIT, as does the upstream text quoted in `test/fixtures/`.

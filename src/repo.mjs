@@ -1,3 +1,6 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Locate and describe the DeepSeek Harness checkout the toolkit patches. */
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'

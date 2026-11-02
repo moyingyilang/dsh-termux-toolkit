@@ -1,3 +1,6 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Let the POSIX flock entry load a locally compiled Android binding. */
 export const flockAndroid = {
   id: 'flock-android',

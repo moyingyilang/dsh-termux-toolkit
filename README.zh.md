@@ -147,4 +147,4 @@ npm test
 
 ## 许可证
 
-MIT。被补丁的源码文件仍遵循 DeepSeek Harness 的许可证。
+MPL-2.0。工具源码文件都带 Exhibit A 声明：对这些文件的修改需继续以 MPL 发布，同时仍可与其它代码组合。被补丁的 DeepSeek Harness 文件仍为上游 MIT，`test/fixtures/` 里引用的上游文本同样如此。
