@@ -28,11 +28,12 @@ function escapeRe(value) {
  * @param options Explicit `--rc` path and the shell name to inspect.
  * @returns Absolute rc path and the shell flavor the block must match.
  */
-export function resolveShell({ override, shell = process.env.SHELL } = {}) {
+export function resolveShell({ override, shell = process.env.SHELL, zdotdir = process.env.ZDOTDIR } = {}) {
   if (override !== undefined) return { path: override, flavor: override.endsWith('config.fish') ? 'fish' : 'posix' }
   const name = basename(shell ?? 'bash')
   if (name === 'fish') return { path: join(homedir(), '.config/fish/config.fish'), flavor: 'fish' }
-  if (name === 'zsh') return { path: join(homedir(), '.zshrc'), flavor: 'posix' }
+  // zsh reads $ZDOTDIR/.zshrc when the directory is set, which Termux setups often do.
+  if (name === 'zsh') return { path: join(zdotdir ?? homedir(), '.zshrc'), flavor: 'posix' }
   return { path: join(homedir(), '.bashrc'), flavor: 'posix' }
 }
 

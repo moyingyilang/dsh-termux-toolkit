@@ -70,6 +70,7 @@ test('removing an absent block changes nothing', (t) => {
 
 test('the rc file follows SHELL unless overridden', () => {
   assert.match(resolveShell({ shell: '/bin/zsh' }).path, /\.zshrc$/)
+  assert.equal(resolveShell({ shell: '/bin/zsh', zdotdir: '/custom/zdot' }).path, '/custom/zdot/.zshrc')
   assert.match(resolveShell({ shell: '/bin/bash' }).path, /\.bashrc$/)
   assert.equal(resolveShell({ shell: '/usr/bin/fish' }).flavor, 'fish')
   assert.deepEqual(resolveShell({ override: '/tmp/custom.rc' }), { path: '/tmp/custom.rc', flavor: 'posix' })
