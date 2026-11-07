@@ -4,7 +4,7 @@
 
 | Requirement | Why |
 | --- | --- |
-| android-arm64, Node >= 22.19 | the checkout's engines range and its client compiler |
+| android-arm64, Node >= 24.9 for 0.2.2 (>= 22.19 for 0.2.0-rc.2) | the checkout's engines range and its client compiler |
 | a C compiler (`cc`) | the flock binding is compiled on the device; no prebuild exists for bionic |
 | `npm install -g pnpm@11.7.0` | the checkout pins that version; pnpm 10+ would otherwise switch to `@pnpm/exe`, which has no android-arm64 binary |
 | Node-API headers | `<prefix>/include/node`; the toolkit also checks `/usr/include/node` and `--headers` |
@@ -13,6 +13,12 @@
 The toolkit never mutates a global tool installation and never downloads a prebuilt addon.
 
 ## What `build` runs
+
+The repository's own `pnpm run build` compiles with `--max-old-space-size=8192` and runs a concurrent
+`build:check`. On this device that budget is what Android's low-memory killer reclaims, which takes the
+whole session down. `dsh-termux build` therefore runs the artifact steps one at a time under one cap
+(`--memory-mb`, default 3072): referenced projects, host `tsc`, client `tsc`, host bundle, client
+bundle, Web. `--full` opts back into the repository script; `--desktop` adds the desktop bundle.
 
 ```sh
 dsh-termux patch

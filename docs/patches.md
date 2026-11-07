@@ -131,7 +131,7 @@ Guarantee: the object publish stays atomic. The alias is no longer an inode-iden
 
 ## Drift
 
-The anchors are exact text from DeepSeek Harness 0.2.0-rc.2. `patch --check` runs the same inspection without writing:
+The anchors are exact text from DeepSeek Harness 0.2.2-rc.1, except the create-if-absent edit, which declares both the 0.2.0-rc.2 and 0.2.2-rc.1 shapes and matches whichever the checkout has. `patch --check` runs the same inspection without writing:
 
 - `pending` — the upstream text is present once: applicable, exit 0
 - `applied` — the patched text is present once: nothing to do, exit 0

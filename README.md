@@ -4,7 +4,7 @@ Build and run [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness
 
 Upstream DeepSeek Harness boots on Linux, macOS, and Windows. On Android its host preparation, session lock, session log publication, new-file writes, and attachment storage each hit a platform gap that no configuration flag closes, and its image pipeline has no prebuilt binary for bionic. This toolkit applies seven small source patches to a checkout, compiles the checked-in flock binding and sharp against the system libvips, and starts the Web UI with the one flag the patched build needs. Nothing is forked: the patches are exact-text replacements, inspectable and reversible, and `patch --check` fails loudly when upstream moves an anchor.
 
-Verified on a Termux device (android-arm64, Node v24.18.0, DeepSeek Harness 0.2.0-rc.2). [中文说明](README.zh.md).
+Verified on a Termux device (android-arm64, Node v24.22.2, DeepSeek Harness 0.2.2-rc.1; the create-if-absent patch accepts both the 0.2.0-rc.2 and 0.2.2-rc.1 shapes). [中文说明](README.zh.md).
 
 ## What it fixes
 
@@ -21,7 +21,7 @@ Verified on a Termux device (android-arm64, Node v24.18.0, DeepSeek Harness 0.2.
 
 ## Requirements
 
-- Termux on android-arm64 with Node.js >= 22.19 and a C compiler (`pkg install nodejs clang` or the Termux `cc` wrapper)
+- Termux on android-arm64. DeepSeek Harness 0.2.2 requires Node >= 24.9; 0.2.0-rc.2 accepts >= 22.19. A C compiler is required (`pkg install nodejs clang` or the Termux `cc` wrapper).
 - a DeepSeek Harness checkout: `git clone https://github.com/deepseek-ai/deepseek-harness ~/deepseek-harness`
 - the JavaScript pnpm build the checkout pins: `npm install -g pnpm@11.7.0`
 - image attachments only: `pkg install libvips` (headers for the sharp build)
@@ -62,7 +62,7 @@ npm link ~/dsh-termux-toolkit
 | --- | --- |
 | `doctor` | prints platform, checkout version, patch state, binding state, and the resolved pnpm |
 | `patch` | applies the five source patches; idempotent; `--check` only reports and exits 1 when upstream moved an anchor |
-| `build` | patch, `pnpm install --frozen-lockfile --ignore-scripts`, `pnpm run build` with a 4 GiB heap, then compile the flock binding |
+| `build` | patch, `pnpm install --frozen-lockfile --ignore-scripts`, then the artifact steps sequentially under one heap cap (referenced projects, host and client `tsc`, both bundles, Web) plus both native pieces; `--full` runs the repository's own `pnpm run build` |
 | `setup` | `doctor`, then `build` when the checkout is not ready, then `start` |
 | `start` | ensures the binding, then runs `node --expose-internals apps/cli/lib/bin.js web --port <port> --no-open` |
 | `shell` | installs the `dsh4termux` shortcut into the shell rc file (`--print`, `--remove`, `--rc`) |
@@ -107,13 +107,16 @@ file digests. A binding from a different architecture aborts the build instead o
 
 ## Known upstream test divergences
 
-Nine upstream tests encode behaviour Android forbids: hard-link identity, an IO-failure classification for the policy `EACCES`, an unsupported-platform rejection, and an fsync walk above the app data directory. They fail on a Termux device with the patches applied; the product paths they cover succeed through the fallbacks:
+Eleven upstream tests encode behaviour this device cannot produce: hard-link identity, an IO-failure classification for the policy `EACCES`, an unsupported-platform rejection, an fsync walk above the app data directory, and two staged-candidate checks whose injected truncation does not reach the verifier here (they fail without the patches too). They fail on a Termux device with the patches applied; the product paths they cover succeed through the fallbacks:
 
 - `packages/fs/fs-local/tests/fsio.spec.ts` — "maps a non-collision guarded-create publication failure and cleans staging" (injects the `EACCES` that Android produces as policy)
 - `packages/session/session-persistence-jsonl/tests/generation.spec.ts` — "accepts an identical publication winner and rejects different bytes", "accepts an identical regular hardlink target", "retains a POSIX publication after the directory sync fails", "reports success after exclusive publication when redundant stage cleanup fails", "accepts an identical target that wins POSIX publication" (each creates a real hard link while simulating a non-Android platform)
 - `native/system/test/flock.test.js` — "import succeeds with native addons disabled" (asserts the unsupported-platform rejection the patch removes)
 - `packages/attachment/attachment-local/tests/file-store.spec.ts` — "deduplicates identical bytes and stores distinct names beside one digest" (asserts that two alias names share one inode, which a copy cannot do)
 - `packages/attachment/attachment-local/tests/store.spec.ts` — "syncs every object ancestor up to the durable boundary before returning" (expects syncs above `/data/data`, which Android refuses)
+- `packages/session/session-persistence-jsonl/tests/generation.spec.ts` — "rejects a torn staged candidate before publication", "rejects a invalid-json staged candidate before publication" (fail here without the patches as well)
+
+The `packages/boot/app-boot` profile-resolution suite is not run on the device: its workers need the native binding or `--expose-internals`, and Node refuses that flag in `NODE_OPTIONS`. The boot smoke covers the same resolver path.
 
 `docs/patches.md` lists why each one cannot pass on Android.
 

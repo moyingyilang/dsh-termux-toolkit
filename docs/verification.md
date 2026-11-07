@@ -4,10 +4,10 @@ Recorded on one Termux device so the claims in the README can be reproduced or r
 
 | Fact | Value |
 | --- | --- |
-| host | `android-arm64`, Node `v24.18.0` |
-| checkout | DeepSeek Harness `0.2.0-rc.2` |
-| pinned package manager | `pnpm@11.7.0` (JavaScript build) |
-| compiler | Termux `cc` |
+| host | `android-arm64`, Node `v24.22.2` |
+| checkout | DeepSeek Harness `0.2.2-rc.1` (the create-if-absent patch also matches `0.2.0-rc.2`) |
+| pinned package manager | `pnpm@11.28.5` (JavaScript build) |
+| compiler | Termux `cc`, libvips `8.18.7`, openexr `3.5.3` |
 
 ## The platform denial
 
@@ -19,66 +19,58 @@ rename: allowed
 
 Android sepolicy denies `link(2)` inside app data directories and allows `rename(2)`. Every fallback in the toolkit keys off exactly this pair.
 
-## Patches compile
+## Build
 
-`tsc -b` over the five patched projects exits 0:
+The repository's own `pnpm run build` runs a `--max-old-space-size=8192` TypeScript
+compilation beside a concurrent `build:check`. On this device that budget is what the
+Android low-memory killer reclaims, and it takes the running session down with it.
 
-```sh
-node --max-old-space-size=4096 node_modules/typescript/bin/tsc -b \
-  native/system/packages/entry \
-  packages/fs/fs-local \
-  packages/session/session-persistence-jsonl \
-  packages/boot/app-boot
-```
+`dsh-termux build` therefore runs the artifact steps sequentially under one cap
+(3072 MiB by default, `--memory-mb`): referenced projects, host `tsc`, client `tsc`,
+host bundle, client bundle, Web build. Then the two native pieces:
 
-The emitted bundles carry the patched code (`builtinLoader`, `createExclusive`, `fsRename`, the android flock gate), so `pnpm run build` keeps the patches after regenerating `lib/`.
+- the flock binding compiled from `src/flock.c` into
+  `native/system/node_modules/@deepseek-ai/node-addon-system-<platform>-<arch>/bin/system.node`;
+- sharp `0.35.5` compiled against Termux libvips (`sharp-android-arm64-0.35.5.node`).
+
+`libvips 8.18.7-2` needs `openexr 3.5`; without it sharp fails with
+`library "libOpenEXR-3_5.so" not found` and every image attachment fails. `pkg install openexr`
+fixes it. The optional vips-magick module then warns because ImageMagick still links
+`libOpenEXR-3_4.so`; core libvips operations are unaffected.
 
 ## Test suites on device, patched
 
 | Suite | Result | Remaining failures |
 | --- | --- | --- |
-| `packages/fs/fs-local` | 160 passed, 1 failed | the test that injects the `EACCES` Android raises as policy and expects it to surface as `FS_IO_ERROR` |
-| `packages/session/session-persistence-jsonl` | 732 passed, 5 failed, 1 skipped | the five tests that create a real hard link while asserting inode identity or a simulated non-Android platform |
-| `packages/attachment/attachment-local` | 91 passed, 2 failed, 1 skipped | one asserts inode-identical aliases, one expects fsyncs above `/data/data` |
+| `packages/fs/fs-local` | 204 passed, 1 failed | injects the `EACCES` Android raises as policy and expects `FS_IO_ERROR` |
+| `packages/session/session-persistence-jsonl` | 758 passed, 7 failed, 1 skipped | five hard-link identity tests, plus the torn and invalid-json staged-candidate tests that fail here without the patches too |
+| `packages/attachment/attachment-local` | 96 passed, 2 failed | inode-identical aliases and fsyncs above `/data/data` |
+| `packages/boot/app-boot` profile resolution | not run | the suite requires the native binding or `--expose-internals` inside each test worker |
 
-Before the `migration-publish-fallback` patch landed, the session suite reported 132 failures; all were `EACCES` on `link(2)`. The five that remain are test-harness assumptions, listed in [patches.md](patches.md#android-test-divergences).
-
-## Upload probe
-
-With the attachment patches applied, the source tree stores a file and an image into a real DSH_HOME on this device:
-
-```text
-file stored: notes.txt hello termux
-file alias: .../attachments/v1/files/ba/ba52.../notes.txt
-image stored: sha256:ab13... 64x32 bytes 156
-```
-
-sharp came from a local source build against Termux libvips 8.18.7 (`sharp-android-arm64-0.35.3.node`), which its loader prefers over the missing platform package.
+The boot smoke covers the resolver path instead.
 
 ## Boot
 
-With the native binding forced unavailable (upstream entry restored, no android prebuild):
-
 ```text
-$ node apps/cli/lib/bin.js web --port 3183 --no-open
-dsh: fatal uncaught exception: Error: dsh: host preparation failed: profile resolution:
-  cannot load internal/modules/esm/loader; this platform requires --expose-internals
-```
-
-With the launcher flag:
-
-```text
-$ node --expose-internals apps/cli/lib/bin.js web --port 3185 --no-open
-dsh web: http://127.0.0.1:3185/?token=<token>
-$ curl -o /dev/null -w '%{http_code}' http://127.0.0.1:3185/            # 401 without the token
-$ curl -L -b cookies -c cookies 'http://127.0.0.1:3185/?token=<token>'  # 200, 34 845 bytes
+$ DSH_HOME=<temp> node --expose-internals apps/cli/lib/bin.js web --port 3191 --no-open
+dsh web: http://127.0.0.1:3191/?token=<token>
+$ curl -L -b cookies -c cookies 'http://127.0.0.1:3191/?token=<token>'
+final=200
 <title>DSH Local Build</title>
 ```
 
-## flock binding
+## Upload probe
 
-Compiled from `native/system/packages/entry/src/flock.c` into
-`native/system/node_modules/@deepseek-ai/node-addon-system-android-arm64/bin/system.node`, and the
-patched entry loads it. In `native/system/test/flock.test.js`, the addon-disabled case now reports
-`ERR_DLOPEN_DISABLED` instead of `ERR_FLOCK_UNSUPPORTED_PLATFORM`, because android is a supported
-platform; the other gate tests (win32, freebsd) still pass.
+With the attachment patches applied, the source tree stores a file and an image into a
+real DSH_HOME on this device:
+
+```text
+file stored: notes.txt hello termux
+image stored: sha256:ab13... 64x32 bytes 156
+```
+
+## Release check
+
+`dsh-termux release` assembles `dist/<platform>-<arch>-<version>/`, verifies the flock
+binding's ELF class and machine, and records SHA-256 for every file. The binding is not
+executed on another architecture.

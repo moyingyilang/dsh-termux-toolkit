@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict'
-import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -119,11 +119,37 @@ test('the attachment publication patch renames objects and copies aliases', (t) 
   assert.match(source, /async function targetExists/)
 })
 
+test('the fs patch also matches the 0.2.0 create-if-absent shape', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-termux-old-fs-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  mkdirSync(join(root, 'packages/fs/fs-local/src'), { recursive: true })
+  writeFileSync(join(root, 'packages/fs/fs-local/src/fsio.ts'), [
+    'function isEEXIST(error: unknown): boolean {',
+    "  return error instanceof Error && 'code' in error && error.code === 'EEXIST'",
+    '}',
+    '',
+    '    if (createIfAbsent !== undefined) {',
+    '      try {',
+    '        await linkFile(tempPath, absolutePath)',
+    '      } catch (error: unknown) {',
+    '        await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)',
+    '      }',
+    '    } else {',
+    '',
+  ].join('\n'))
+  const patch = patches.find((entry) => entry.id === 'fs-create-fallback')
+  assert.equal(inspectPatches(root, [patch])[0].state, 'pending')
+  applyPatches(root, [patch])
+  const source = readFileSync(join(root, 'packages/fs/fs-local/src/fsio.ts'), 'utf8')
+  assert.match(source, /function isPermissionDenied/)
+  assert.match(source, /platform === 'android' && isPermissionDenied\(error\)/)
+})
+
 test('the fs patch keeps the guarded-create taxonomy for other errors', (t) => {
   const root = checkoutCopy(t)
   applyPatches(root, patches)
   const source = readFileSync(join(root, 'packages/fs/fs-local/src/fsio.ts'), 'utf8')
-  assert.match(source, /if \(platform === 'android' && isPermissionDenied\(error\)\) \{/)
-  assert.match(source, /await throwGuardedCreateFailure\(error, absolutePath, createIfAbsent\.displayPath, inspectPublicationTarget\)/)
+  assert.match(source, /if \(platform === 'android' && isPermissionError\(error\)\) \{/)
+  assert.match(source, /await throwGuardedCreateFailure\(error, absolutePath, displayPath, inspectPublicationTarget\)/)
   assert.match(source, /created = await open\(absolutePath, 'wx', 0o600\)/)
 })

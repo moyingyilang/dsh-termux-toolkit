@@ -51,7 +51,9 @@ Options:
   --print           Print the shortcut block instead of writing it.
   --remove          Remove the shortcut block.
   --out <dir>       Release output directory (default: ./dist).
-  --force           Rebuild the flock binding even when it is newer than its source.
+  --full            Run the repository's own pnpm run build instead of the capped steps.
+  --desktop         Also bundle the desktop host during a capped build.
+  --force           Rebuild both native pieces even when newer than their sources.
   --strict          doctor exits 1 when the checkout cannot run.
   --help            Print this text.
 `
@@ -100,6 +102,8 @@ export async function main(argv) {
         headers: { type: 'string' },
         cc: { type: 'string' },
         force: { type: 'boolean' },
+        full: { type: 'boolean' },
+        desktop: { type: 'boolean' },
         strict: { type: 'boolean' },
         help: { type: 'boolean' },
       },
@@ -153,6 +157,8 @@ export async function main(argv) {
           headers: values.headers,
           cc: values.cc,
           force: values.force === true,
+          full: values.full === true,
+          desktop: values.desktop === true,
         })
         return 0
       }

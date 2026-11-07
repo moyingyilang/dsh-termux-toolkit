@@ -4,7 +4,7 @@
 
 上游 DeepSeek Harness 只支持 Linux、macOS 和 Windows。在 Android 上，它的宿主准备、会话锁、会话日志发布、新文件创建和附件存储各自撞上一个平台缺口，图像处理链也没有 bionic 的预编译产物，没有任何配置项能绕开。本工具对 checkout 施加七个小的源码补丁，为 bionic 编译仓库自带的 flock 绑定、并针对系统 libvips 编译 sharp，再用一个必需参数启动 Web UI。它不是 fork：补丁是精确文本替换，可审查、可回退；上游一改锚点，`patch --check` 就会失败并指出文件。
 
-已在 Termux 设备上验证（android-arm64，Node v24.18.0，DeepSeek Harness 0.2.0-rc.2）。[English](README.md)。
+已在 Termux 设备上验证（android-arm64，Node v24.22.2，DeepSeek Harness 0.2.2-rc.1；create-if-absent 补丁同时接受 0.2.0-rc.2 与 0.2.2-rc.1 两种代码形状）。[English](README.md)。
 
 ## 修复了什么
 
@@ -21,7 +21,7 @@
 
 ## 环境要求
 
-- Termux（android-arm64），Node.js >= 22.19，C 编译器（`pkg install nodejs clang` 或 Termux 自带的 `cc`）
+- Termux（android-arm64）。DeepSeek Harness 0.2.2 要求 Node >= 24.9，0.2.0-rc.2 接受 >= 22.19。需要 C 编译器（`pkg install nodejs clang` 或 Termux 自带的 `cc`）。
 - DeepSeek Harness 的 checkout：`git clone https://github.com/deepseek-ai/deepseek-harness ~/deepseek-harness`
 - checkout 固定的 JavaScript 版 pnpm：`npm install -g pnpm@11.7.0`
 - 仅图片附件需要：`pkg install libvips`（编译 sharp 用的头文件）
@@ -62,7 +62,7 @@ npm link ~/dsh-termux-toolkit
 | --- | --- |
 | `doctor` | 打印平台、checkout 版本、补丁状态、绑定状态和解析到的 pnpm |
 | `patch` | 应用五个源码补丁；幂等；`--check` 只报告，上游锚点变化时退出码为 1 |
-| `build` | 打补丁、`pnpm install --frozen-lockfile --ignore-scripts`、以 4 GiB 堆运行 `pnpm run build`，再编译 flock 绑定 |
+| `build` | 打补丁、`pnpm install --frozen-lockfile --ignore-scripts`，然后在单一堆上限下顺序执行各产物步骤（引用项目、host 与 client 的 `tsc`、两个 bundle、Web），再编译两个原生部分；`--full` 改用仓库自带的 `pnpm run build` |
 | `setup` | 先 `doctor`，checkout 未就绪时 `build`，然后 `start` |
 | `start` | 确认绑定存在后运行 `node --expose-internals apps/cli/lib/bin.js web --port <port> --no-open` |
 | `shell` | 把 `dsh4termux` 快捷命令写进 shell rc 文件（`--print`、`--remove`、`--rc`） |
@@ -104,13 +104,16 @@ npm link ~/dsh-termux-toolkit
 
 ## 已知的上游测试差异
 
-上游有九个测试在 Android 上无法通过：它们分别断言硬链接 inode 一致、`link(2)` 的权限错误必须算 IO 失败、flock 补丁移除的"平台不支持"拒绝，以及 app 数据目录之上的祖先 fsync。它们覆盖的产品路径都通过回退正常工作：
+上游有十一个测试在这台设备上无法通过：它们分别断言硬链接 inode 一致、`link(2)` 的权限错误必须算 IO 失败、flock 补丁移除的"平台不支持"拒绝、app 数据目录之上的祖先 fsync，以及两个 staged candidate 检查（这里的注入截断到不了校验器，不打补丁同样失败）。它们覆盖的产品路径都通过回退正常工作：
 
 - `packages/fs/fs-local/tests/fsio.spec.ts` — "maps a non-collision guarded-create publication failure and cleans staging"（注入 Android 作为策略产生的 `EACCES`）
 - `packages/session/session-persistence-jsonl/tests/generation.spec.ts` — "accepts an identical publication winner and rejects different bytes"、"accepts an identical regular hardlink target"、"retains a POSIX publication after the directory sync fails"、"reports success after exclusive publication when redundant stage cleanup fails"、"accepts an identical target that wins POSIX publication"（都在模拟非 Android 平台时创建真实的硬链接）
 - `native/system/test/flock.test.js` — "import succeeds with native addons disabled"（断言补丁移除的"平台不支持"拒绝路径）
 - `packages/attachment/attachment-local/tests/file-store.spec.ts` — "deduplicates identical bytes and stores distinct names beside one digest"（断言两个别名共用一个 inode，复制做不到）
 - `packages/attachment/attachment-local/tests/store.spec.ts` — "syncs every object ancestor up to the durable boundary before returning"（期望同步 `/data/data` 之上的目录）
+- `packages/session/session-persistence-jsonl/tests/generation.spec.ts` — "rejects a torn staged candidate before publication"、"rejects a invalid-json staged candidate before publication"（不打补丁在这台设备上同样失败）
+
+`packages/boot/app-boot` 的 profile-resolution 套件不在设备上运行：它的 worker 需要原生绑定或 `--expose-internals`，而 Node 拒绝在 `NODE_OPTIONS` 里放这个参数。启动冒烟覆盖了同一条解析路径。
 
 原因见 `docs/patches.md`。
 

@@ -14,10 +14,17 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * @typedef {object} FileEdit
- * @property {string} file Repository-relative POSIX path.
+ * @typedef {object} EditVariant
  * @property {string} before Exact upstream text, present once while unpatched.
  * @property {string} after Replacement text, present once once patched.
+ */
+
+/**
+ * @typedef {object} FileEdit
+ * @property {string} file Repository-relative POSIX path.
+ * @property {string} [before] Upstream text for a single-variant edit.
+ * @property {string} [after] Replacement text for a single-variant edit.
+ * @property {EditVariant[]} [variants] Alternative upstream shapes this edit accepts.
  */
 
 /**
@@ -76,21 +83,50 @@ export function countExact(haystack, needle) {
  * @param {FileEdit} edit Edit to inspect.
  * @returns {EditInspection} Inspection result.
  */
+/**
+ * The upstream shapes one edit accepts, in declaration order.
+ * @param {FileEdit} edit Edit as declared by a patch.
+ * @returns Variants this edit can match.
+ */
+export function editVariants(edit) {
+  if (edit.variants !== undefined) return edit.variants
+  if (edit.before === undefined || edit.after === undefined) throw new Error('patch: edit declares neither variants nor before/after')
+  return [{ before: edit.before, after: edit.after }]
+}
+
+/**
+ * Inspect one edit against the checkout.
+ *
+ * The upstream count ignores occurrences inside the replacement text, so a patch
+ * whose replacement extends the upstream block reads as `pending` rather than as
+ * both states at once. An edit with several variants is applied when any variant
+ * is applied and pending when any variant is pending.
+ * @param {string} root Repository root.
+ * @param {FileEdit} edit Edit to inspect.
+ * @returns {EditInspection} Inspection result.
+ */
 export function inspectEdit(root, edit) {
   const path = join(root, edit.file)
   if (!existsSync(path)) {
     return { edit, state: 'unsupported', filePresent: false, beforeCount: 0, afterCount: 0 }
   }
   const source = readFileSync(path, 'utf8')
-  const afterCount = countExact(source, edit.after)
-  const withoutReplacement = source.split(edit.after).join('')
-  const beforeCount = countExact(withoutReplacement, edit.before)
-  const state = afterCount === 1 && beforeCount === 0
-    ? 'applied'
-    : beforeCount === 1 && afterCount === 0
-      ? 'pending'
-      : 'unsupported'
-  return { edit, state, filePresent: true, beforeCount, afterCount }
+  const variants = editVariants(edit).map((variant) => {
+    const afterCount = countExact(source, variant.after)
+    const withoutReplacement = source.split(variant.after).join('')
+    const beforeCount = countExact(withoutReplacement, variant.before)
+    const state = afterCount === 1 && beforeCount === 0
+      ? 'applied'
+      : beforeCount === 1 && afterCount === 0
+        ? 'pending'
+        : 'unsupported'
+    return { variant, state, beforeCount, afterCount }
+  })
+  const applied = variants.find((entry) => entry.state === 'applied')
+  const pending = variants.find((entry) => entry.state === 'pending')
+  const chosen = applied ?? pending ?? variants[0]
+  const state = applied !== undefined ? 'applied' : pending !== undefined ? 'pending' : 'unsupported'
+  return { edit, state, filePresent: true, beforeCount: chosen.beforeCount, afterCount: chosen.afterCount }
 }
 
 /**
@@ -175,7 +211,14 @@ export function applyPatches(root, patches) {
       kept.push(inspection.patch.id)
       continue
     }
-    for (const edit of inspection.edits) replaceOnce(join(root, edit.edit.file), edit.edit.before, edit.edit.after)
+    for (const edit of inspection.edits) {
+      const variant = editVariants(edit.edit).find((entry) => {
+        const source = readFileSync(join(root, edit.edit.file), 'utf8')
+        return countExact(source.split(entry.after).join(''), entry.before) === 1
+      })
+      if (variant === undefined) throw new Error(`patch: ${edit.edit.file} has no applicable variant`)
+      replaceOnce(join(root, edit.edit.file), variant.before, variant.after)
+    }
     applied.push(inspection.patch.id)
   }
   return { applied, kept }
