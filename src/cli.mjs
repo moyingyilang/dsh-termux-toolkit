@@ -41,7 +41,7 @@ Options:
   --check           Report patch state; exit 1 when upstream changed an anchor.
   --skip-install    Skip pnpm install; reuse the existing node_modules tree.
   --scripts         Run dependency install scripts (off by default: Windows-only builds).
-  --memory-mb <n>   Heap limit for the build (default: ${String(DEFAULT_MEMORY_MB)}).
+  --memory-mb <n>   Heap limit for the build (default: ${String(DEFAULT_MEMORY_MB)}) and the app (default: 4096).
   --port <n>        Web UI port (default: ${String(DEFAULT_PORT)}).
   --restart         Replace this checkout's instance already on the port.
   --dsh-home <dir>  DSH_HOME for this instance (default: ~/.dsh-src).
@@ -178,6 +178,7 @@ export async function main(argv) {
         return await startWeb(root, {
           port: values.port === undefined ? undefined : Number(values.port),
           restart: values.restart === true,
+          memoryMb: values['memory-mb'] === undefined ? undefined : Number(values['memory-mb']),
           dshHome: values['dsh-home'],
           headers: values.headers,
           cc: values.cc,
@@ -207,6 +208,7 @@ export async function main(argv) {
         return await startWeb(locateRepo(values.repo), {
           port: values.port === undefined ? undefined : Number(values.port),
           restart: values.restart === true,
+          memoryMb: values['memory-mb'] === undefined ? undefined : Number(values['memory-mb']),
           dshHome: values['dsh-home'],
           headers: values.headers,
           cc: values.cc,

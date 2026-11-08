@@ -22,6 +22,16 @@ import { sharpStatus } from './sharp.mjs'
 export const DEFAULT_PORT = 3081
 
 /**
+ * Heap cap for the running app.
+ *
+ * Node sizes its default old-space from the memory it sees at startup. On a Termux
+ * device that lands near 1 GiB, and 0.2.2 with a populated DSH_HOME exceeds it while
+ * loading sessions and plugins, so the host dies with "Reached heap limit" right
+ * after it prints its token URL.
+ */
+export const DEFAULT_RUNTIME_MEMORY_MB = 4096
+
+/**
  * Whether something already accepts TCP connections on the port.
  * @param port Listen port.
  * @returns True when a listener answers.
@@ -129,12 +139,13 @@ export async function startWeb(root, options = {}) {
   const images = sharpStatus(root)
   if (images.state !== 'ready') log(`dsh-termux: image attachments unavailable (${images.detail})`)
 
+  const memoryMb = options.memoryMb ?? DEFAULT_RUNTIME_MEMORY_MB
   const dshHome = options.dshHome ?? join(homedir(), '.dsh-src')
   log(`dsh-termux: DSH_HOME=${dshHome}`)
-  log(`dsh-termux: node --expose-internals apps/cli/lib/bin.js web --port ${String(port)} --no-open`)
+  log(`dsh-termux: node --expose-internals --max-old-space-size=${String(memoryMb)} apps/cli/lib/bin.js web --port ${String(port)} --no-open`)
   const child = spawn(
     process.execPath,
-    ['--expose-internals', 'apps/cli/lib/bin.js', 'web', '--port', String(port), '--no-open'],
+    ['--expose-internals', `--max-old-space-size=${String(memoryMb)}`, 'apps/cli/lib/bin.js', 'web', '--port', String(port), '--no-open'],
     { cwd: root, stdio: 'inherit', env: { ...process.env, DSH_HOME: dshHome } },
   )
   const forward = (signal) => () => child.kill(signal)
